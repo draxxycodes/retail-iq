@@ -1,0 +1,23 @@
+# Secrets - never commit
+.env
+*.pem
+*.key
+
+# Generated data (reproducible via scripts/generate_source_data.py)
+data/raw/*
+!data/raw/.gitkeep
+data/curated/*
+!data/curated/.gitkeep
+data/rejected/*
+!data/rejected/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Spark / logs
+spark-warehouse/
+derby.log
+*.log

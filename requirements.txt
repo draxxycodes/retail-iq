@@ -1,0 +1,8 @@
+# RetailIQ - Python dependencies
+# Install: pip install -r requirements.txt
+
+pyspark==3.5.3            # ETL engine (ingestion, transformation)
+pandas==2.2.3             # source-data generation, DQ summaries
+psycopg2-binary==2.9.10   # Redshift warehouse loading (PostgreSQL wire protocol)
+python-dotenv==1.0.1      # load configuration from .env (never hardcode credentials)
+pytest==8.3.4             # unit tests for data-quality functions

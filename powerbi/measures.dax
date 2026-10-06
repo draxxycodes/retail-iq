@@ -1,0 +1,29 @@
+// RetailIQ Power BI measures (PRD §15, FR-08)
+// Create these in Power BI Desktop: Modeling -> New measure, one per line.
+// Assumes the views from redshift/analytics/views.sql are imported.
+
+-- ---------- Sales ----------
+Revenue            = SUM ( v_sales_enriched[net_sales] )
+Gross Revenue      = SUM ( v_sales_enriched[gross_sales] )
+Orders             = DISTINCTCOUNT ( v_sales_enriched[transaction_id] )
+Units Sold         = SUM ( v_sales_enriched[quantity] )
+Total Discount     = SUM ( v_sales_enriched[discount_amount] )
+Profit             = SUM ( v_sales_enriched[profit] )
+Profit Margin %    = DIVIDE ( [Profit], [Revenue] )
+Avg Order Value    = DIVIDE ( [Revenue], [Orders] )
+
+-- ---------- Customers ----------
+Customers          = DISTINCTCOUNT ( v_sales_enriched[customer_id] )
+Avg Spend / Customer = DIVIDE ( [Revenue], [Customers] )
+
+-- ---------- Returns ----------
+Return Events      = COUNTROWS ( v_returns_analysis )
+Units Returned     = SUM ( v_returns_analysis[return_quantity] )
+Total Refunds      = SUM ( v_returns_analysis[refund_amount] )
+Return Rate %      = DIVIDE ( [Units Returned], [Units Sold] )
+
+-- ---------- Time intelligence (needs a proper date table: use dim_date) --
+Revenue LY         = CALCULATE ( [Revenue], SAMEPERIODLASTYEAR ( dim_date[full_date] ) )
+Revenue YoY %      = DIVIDE ( [Revenue] - [Revenue LY], [Revenue LY] )
+Revenue MTD        = TOTALMTD ( [Revenue], dim_date[full_date] )
+Revenue YTD        = TOTALYTD ( [Revenue], dim_date[full_date] )
