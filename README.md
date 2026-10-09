@@ -1,83 +1,83 @@
-# RetailIQ — Retail Sales Analytics & Customer Insights Platform
+# RetailIQ - Enterprise Data Pipeline 🚀
 
-End-to-end retail analytics platform for the Cognizant NPN program
-(Use Case 5). Fragmented source data → PySpark ETL → data quality →
-Amazon Redshift warehouse → SQL analytics → Power BI dashboards.
+**Cognizant NPN Hackathon - Use Case 5: Retail Sales Analytics & Customer Insights Platform**
 
-**Pipeline in one line:** CSV + Oracle/MySQL extracts → PySpark →
-validated star schema in Redshift → SQL KPIs → Power BI.
+RetailIQ is an end-to-end, production-ready data engineering pipeline designed to ingest, validate, transform, and load retail data into a cloud data warehouse for Business Intelligence. 
 
-## Repository layout
+Unlike basic data-movement scripts, this project implements **enterprise-grade data engineering patterns** including Data Quality quarantines, hybrid JDBC/CSV ingestion, Massively Parallel Processing (MPP) loads via AWS S3, and Apache Airflow orchestration.
 
-```
+---
+
+## 🌟 Key Features & Architecture
+
+1. **Hybrid Ingestion Engine**: 
+   * Reads customer data from **Oracle CRM** and master data from **MySQL** via JDBC.
+   * Automatically falls back to local CSV extraction if database credentials are not present (perfect for local dev/demo).
+2. **PySpark ETL & Data Quality Gate**: 
+   * Transforms raw data into a Star Schema in-memory using Apache Spark.
+   * Validates data against business rules (e.g., negative discounts, orphaned keys). Bad records are not silently dropped—they are **quarantined** in `data/rejected/` with a logged JSON reason code.
+3. **Cloud-Native Redshift Loading**:
+   * Stages curated Parquet/CSV files in **AWS S3**.
+   * Uses the Redshift `COPY` command for massively parallel ingestion, rather than slow row-by-row `INSERT` statements.
+4. **Apache Airflow Orchestration**:
+   * Fully orchestrated DAG (`retailiq_etl_dag.py`) that handles dependencies, scheduling, and automatically halts the pipeline if the Data Quality rejection rate exceeds 10%.
+5. **Analytics-Ready Views (Power BI)**:
+   * Optimized SQL Views (using CTEs to avoid data duplication/Cartesian explosions) feed directly into a Power BI dashboard.
+
+---
+
+## 📂 Project Structure
+
+```text
 retail-iq/
-├── scripts/generate_source_data.py  # reproducible synthetic source data (+DQ answer key)
-├── ingestion/schemas.py             # explicit source schemas (fail fast on drift)
-├── etl/etl_pipeline.py          # extract → validate → transform → load (curated)
-├── data_quality/checks.py           # PRD §11 quality checks (unit-tested)
-├── redshift/ddl/                    # star-schema DDL (dimensions + facts)
-├── redshift/load/load_redshift.py   # bulk load curated data into Redshift
-├── redshift/analytics/              # views.sql, kpi_queries.sql (Q01–Q20)
-├── powerbi/                         # measures.dax + 5-page dashboard build guide
-├── docs/                            # dictionary, architecture, demo script
-├── tests/                           # pytest unit tests for DQ checks
-├── data/                            # raw / curated / rejected (generated, gitignored)
-├── requirements.txt
-└── .env.example                     # copy to .env — credentials live ONLY here
+├── airflow/dags/          # Apache Airflow orchestration DAG (retailiq_etl_dag.py)
+├── config/                # Environment variables and pipeline settings (.env)
+├── data/                  # Local data storage (raw, curated, rejected)
+├── data_quality/          # PySpark Data Quality check rules
+├── docs/                  # Architecture diagrams & Data Dictionaries
+├── etl/                   # Core PySpark pipeline script (etl_pipeline.py)
+├── powerbi/               # DAX measures and Dashboard Build Guide
+├── redshift/              # Redshift DDLs, Views, and Python S3 Loader
+├── scripts/               # Synthetic source data generator (for demo mode)
+├── tests/                 # Pytest suite for Data Quality rules
+└── requirements.txt       # Python dependencies
 ```
 
-## Quickstart
+---
 
+## 🚀 How to Run the Project Locally
+
+### 1. Prerequisites & Setup
+Make sure you have Python installed. Then install dependencies:
 ```bash
-# 1. Install (Java 17+ required for PySpark)
 pip install -r requirements.txt
+```
+*Optional but recommended:* Copy `.env.example` to `.env` and fill in your AWS Redshift, S3, Oracle, and MySQL credentials.
 
-# 2. Generate source data (~60k sales, masters, deliberate DQ issues)
+### 2. Generate Demo Data (If DBs are offline)
+If you don't have active Oracle/MySQL databases configured, generate synthetic source CSVs to use the pipeline's fallback mode:
+```bash
 python scripts/generate_source_data.py
-
-# 3. Run the PySpark pipeline (extract → validate → transform → curated)
-python etl/etl_pipeline.py
-
-# 4. Configure Redshift (only step that needs secrets)
-cp .env.example .env   # then fill in REDSHIFT_HOST / USER / PASSWORD
-
-# 5. Create schema + load warehouse
-python redshift/load/load_redshift.py
-
-# 6. In Redshift Query Editor, run redshift/analytics/views.sql,
-#    then explore redshift/analytics/kpi_queries.sql (Q01–Q20)
-
-# 7. Build the dashboards following powerbi/dashboard_build_guide.md
 ```
 
-Run the unit tests any time: `pytest tests/ -q`
+### 3. Run the PySpark ETL
+This step extracts data (via JDBC or CSV), runs data quality checks, quarantines bad rows, and writes curated files to `data/curated/`.
+```bash
+python etl/etl_pipeline.py
+```
 
-## Demo in 8 steps
+### 4. Load into Amazon Redshift
+Applies DDLs and loads the curated data into Redshift. (This automatically uses S3 `COPY` if configured in `.env`, otherwise it safely falls back to direct `INSERT`).
+```bash
+python redshift/load/load_redshift.py
+```
 
-See `docs/demo_script.md` — it walks one transaction from a raw CSV row
-through validation, transformation, the warehouse, a KPI query, and a
-Power BI drill-down, ending in a business recommendation.
+### 5. Verify Row Counts & Run Tests (Optional)
+```bash
+pytest tests/ -v
+```
 
-## Troubleshooting
+---
 
-- `ModuleNotFoundError: No module named 'config'` — run scripts from the
-  project root (`python scripts/...`, `python etl/...`), not from inside
-  the subdirectories.
-- PySpark `Broken pipe` / `Task lost` on startup behind a corporate proxy —
-  force IPv4: `export JAVA_TOOL_OPTIONS="-Djava.net.preferIPv4Stack=true"`
-  (Linux/macOS) or set the `JAVA_TOOL_OPTIONS` environment variable on
-  Windows before running.
-- `Host key verification failed` / Redshift connection errors — check `.env`
-  values; never hardcode credentials, the loader reads only from `.env`.
-
-## Team split (7 members, PRD §22)
-
-| # | Area | Owns |
-|---|------|------|
-| 1 | Sources & ingestion | `scripts/`, `ingestion/`, data dictionary |
-| 2 | PySpark transformations | `etl/etl_pipeline.py` (transform stage) |
-| 3 | Data quality | `data_quality/`, DQ log, rejected-records story |
-| 4 | Warehouse modeling | `redshift/ddl/`, star schema rationale |
-| 5 | Warehouse loading | `redshift/load/`, `.env` config |
-| 6 | SQL analytics | `redshift/analytics/`, KPI walkthrough |
-| 7 | Power BI | `powerbi/`, dashboard demo |
+## 👥 Team & Acknowledgements
+*Built for the Cognizant NPN Hackathon under the mentorship of Satyabrata Tripathy.*

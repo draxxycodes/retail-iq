@@ -1,9 +1,13 @@
 """RetailIQ PySpark ETL pipeline (PRD §10, FR-01..FR-06, FR-09, FR-10).
 
-    Extract   read the 7 source extracts with explicit schemas (fail fast on drift)
+    Extract   read sources via JDBC (Oracle/MySQL) with CSV fallback
     Validate  run every PRD §11 quality check; quarantine violators with reasons
     Transform standardize, join to masters, derive business measures
     Load      write curated star-schema datasets (parquet + CSV for Redshift)
+
+Ingestion modes (controlled by .env):
+  - JDBC: reads directly from Oracle CRM / MySQL databases when configured
+  - CSV fallback: reads from data/raw/*.csv when DB credentials are absent
 
 Run from the project root:
     python etl/etl_pipeline.py
@@ -11,6 +15,7 @@ Run from the project root:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -35,33 +40,117 @@ SOURCE_FILES = {
     "promotions": "promotions_mysql_extract.csv",
 }
 
+# JDBC table mapping: source name -> (db_type, table_name)
+JDBC_TABLES = {
+    "customers": ("oracle", "customers"),
+    "products":  ("mysql",  "products"),
+    "stores":    ("mysql",  "stores"),
+    "suppliers": ("mysql",  "suppliers"),
+    "promotions":("mysql",  "promotions"),
+}
+
 
 def spark() -> SparkSession:
-    return (
+    builder = (
         SparkSession.builder.appName("RetailIQ-ETL")
         .master("local[*]")
         .config("spark.sql.shuffle.partitions", "8")
         .config("spark.sql.session.timeZone", "Asia/Kolkata")
-        .getOrCreate()
     )
+    # Windows compatibility: suppress winutils warnings when HADOOP_HOME is unset
+    if os.name == "nt":
+        builder = builder.config("spark.sql.warehouse.dir",
+                                str(PROJECT_ROOT / "spark-warehouse"))
+    # Add JDBC driver JARs if available on the classpath
+    jdbc_jars = []
+    jars_dir = PROJECT_ROOT / "jars"
+    if jars_dir.is_dir():
+        for jar in jars_dir.glob("*.jar"):
+            jdbc_jars.append(str(jar))
+    if jdbc_jars:
+        builder = builder.config("spark.jars", ",".join(jdbc_jars))
+    return builder.getOrCreate()
+
+
+# -------------------------------------------------------------- JDBC -----
+def _read_jdbc(spark: SparkSession, db_type: str, table: str,
+               target_schema) -> DataFrame:
+    """Read a table via JDBC (Oracle or MySQL)."""
+    if db_type == "oracle":
+        url = settings.ORACLE_JDBC_URL
+        props = {
+            "user": settings.ORACLE_USER,
+            "password": settings.ORACLE_PASSWORD,
+            "driver": "oracle.jdbc.OracleDriver",
+        }
+    else:  # mysql
+        url = settings.MYSQL_JDBC_URL
+        props = {
+            "user": settings.MYSQL_USER,
+            "password": settings.MYSQL_PASSWORD,
+            "driver": "com.mysql.cj.jdbc.Driver",
+        }
+    df = spark.read.jdbc(url=url, table=table, properties=props)
+    # Cast to target schema for consistency with CSV path
+    for f in target_schema.fields:
+        if f.name in df.columns:
+            df = df.withColumn(f.name, F.trim(F.col(f.name).cast("string")).cast(f.dataType))
+    return df
+
+
+def _read_csv(spark: SparkSession, fname: str, schema) -> DataFrame:
+    """Read a source CSV file with explicit schema (fail fast on drift)."""
+    path = str(settings.RAW_DATA_DIR / fname)
+    df = spark.read.format("csv").option("header", "true").load(path)
+    checks.check_required_columns(df, schema.fieldNames(), fname)
+    for f in schema.fields:
+        df = df.withColumn(f.name, F.trim(F.col(f.name)).cast(f.dataType))
+    return df
 
 
 # ------------------------------------------------------------ extract -----
 def extract(spark: SparkSession) -> dict[str, DataFrame]:
+    """Extract all sources. Uses JDBC when configured, CSV fallback otherwise."""
     raw = {}
+    mysql_ok = settings.mysql_configured()
+    oracle_ok = settings.oracle_configured()
+
+    if mysql_ok:
+        print("  [JDBC] MySQL connection configured — reading master tables via JDBC")
+    if oracle_ok:
+        print("  [JDBC] Oracle connection configured — reading customer CRM via JDBC")
+    if not mysql_ok and not oracle_ok:
+        print("  [CSV]  No JDBC credentials — using CSV fallback for all sources")
+
     for name, fname in SOURCE_FILES.items():
         schema = schemas.ALL[fname]
-        path = str(settings.RAW_DATA_DIR / fname)
-        # Read as strings first, then cast BY NAME: the pipeline is immune to
-        # column reordering in source extracts (a real-world source drift).
-        df = spark.read.format("csv").option("header", "true").load(path)
-        checks.check_required_columns(df, schema.fieldNames(), fname)
-        for f in schema.fields:
-            df = df.withColumn(f.name, F.trim(F.col(f.name)).cast(f.dataType))
+
+        # Decide ingestion mode
+        if name in JDBC_TABLES:
+            db_type, table_name = JDBC_TABLES[name]
+            use_jdbc = (db_type == "oracle" and oracle_ok) or \
+                       (db_type == "mysql" and mysql_ok)
+        else:
+            use_jdbc = False
+
+        if use_jdbc:
+            db_type, table_name = JDBC_TABLES[name]
+            try:
+                df = _read_jdbc(spark, db_type, table_name, schema)
+                mode = f"JDBC/{db_type}"
+            except Exception as e:
+                print(f"  WARN  JDBC read failed for {name}: {e}")
+                print(f"         Falling back to CSV: {fname}")
+                df = _read_csv(spark, fname, schema)
+                mode = "CSV/fallback"
+        else:
+            df = _read_csv(spark, fname, schema)
+            mode = "CSV"
+
         df = (df.withColumn("_row_id", F.monotonically_increasing_id())
                 .withColumn("_source_file", F.lit(fname)))
         raw[name] = df
-        print(f"extract  {fname:32s} {df.count():>8,} rows")
+        print(f"extract  {fname:32s} {df.count():>8,} rows  [{mode}]")
     return raw
 
 
@@ -231,7 +320,7 @@ def build_facts(clean: dict[str, DataFrame], dims: dict[str, DataFrame]) -> dict
         "transaction_id", "date_key", "customer_id", "product_id", "store_id",
         "promotion_id", "quantity", "unit_price", "discount_amount", "gross_sales",
         "net_sales", "cost_of_goods", "profit", "profit_margin",
-        "_source_file", "processed_ts")
+        F.col("_source_file").alias("source_file"), "processed_ts")
 
     r = clean["returns"]
     fact_returns = (
@@ -239,7 +328,8 @@ def build_facts(clean: dict[str, DataFrame], dims: dict[str, DataFrame]) -> dict
          .withColumn("processed_ts", F.current_timestamp())
          .select("return_id", F.col("date_key").alias("return_date_key"), "transaction_id",
                  "customer_id", "product_id", "store_id", "return_quantity",
-                 "return_reason", "refund_amount", "_source_file", "processed_ts")
+                 "return_reason", "refund_amount",
+                 F.col("_source_file").alias("source_file"), "processed_ts")
     )
     return {"fact_sales": fact_sales, "fact_returns": fact_returns}
 

@@ -5,7 +5,7 @@ CREATE SCHEMA IF NOT EXISTS retailiq;
 SET search_path TO retailiq;
 
 -- ------------------------------------------------------------ customers --
-DROP TABLE IF EXISTS dim_customer;
+DROP TABLE IF EXISTS dim_customer CASCADE;
 CREATE TABLE dim_customer (
     customer_id        VARCHAR(20)  NOT NULL PRIMARY KEY,
     name               VARCHAR(100),
@@ -21,7 +21,7 @@ CREATE TABLE dim_customer (
 DISTSTYLE ALL;
 
 -- ------------------------------------------------------------- products --
-DROP TABLE IF EXISTS dim_product;
+DROP TABLE IF EXISTS dim_product CASCADE;
 CREATE TABLE dim_product (
     product_id     VARCHAR(20)  NOT NULL PRIMARY KEY,
     product_name   VARCHAR(120),
@@ -36,7 +36,7 @@ CREATE TABLE dim_product (
 DISTSTYLE ALL;
 
 -- --------------------------------------------------------------- stores --
-DROP TABLE IF EXISTS dim_store;
+DROP TABLE IF EXISTS dim_store CASCADE;
 CREATE TABLE dim_store (
     store_id     VARCHAR(20)  NOT NULL PRIMARY KEY,
     store_name   VARCHAR(120),
@@ -50,7 +50,7 @@ CREATE TABLE dim_store (
 DISTSTYLE ALL;
 
 -- ------------------------------------------------------------ suppliers --
-DROP TABLE IF EXISTS dim_supplier;
+DROP TABLE IF EXISTS dim_supplier CASCADE;
 CREATE TABLE dim_supplier (
     supplier_id     VARCHAR(20)  NOT NULL PRIMARY KEY,
     supplier_name   VARCHAR(100),
@@ -60,7 +60,7 @@ CREATE TABLE dim_supplier (
 DISTSTYLE ALL;
 
 -- ----------------------------------------------------------- promotions --
-DROP TABLE IF EXISTS dim_promotion;
+DROP TABLE IF EXISTS dim_promotion CASCADE;
 CREATE TABLE dim_promotion (
     promotion_id        VARCHAR(20)  NOT NULL PRIMARY KEY,
     promotion_name      VARCHAR(120),
@@ -73,7 +73,7 @@ CREATE TABLE dim_promotion (
 DISTSTYLE ALL;
 
 -- ----------------------------------------------------------------- date --
-DROP TABLE IF EXISTS dim_date;
+DROP TABLE IF EXISTS dim_date CASCADE;
 CREATE TABLE dim_date (
     date_key          INTEGER      NOT NULL PRIMARY KEY,
     full_date         DATE         NOT NULL,

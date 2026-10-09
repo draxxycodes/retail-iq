@@ -5,7 +5,7 @@
 SET search_path TO retailiq;
 
 -- ---------------------------------------------------------------- sales --
-DROP TABLE IF EXISTS fact_sales;
+DROP TABLE IF EXISTS fact_sales CASCADE;
 CREATE TABLE fact_sales (
     transaction_id   VARCHAR(20)   NOT NULL PRIMARY KEY,
     date_key         INTEGER       NOT NULL REFERENCES dim_date(date_key),
@@ -28,7 +28,7 @@ DISTKEY (customer_id)
 SORTKEY (date_key);
 
 -- -------------------------------------------------------------- returns --
-DROP TABLE IF EXISTS fact_returns;
+DROP TABLE IF EXISTS fact_returns CASCADE;
 CREATE TABLE fact_returns (
     return_id         VARCHAR(20)   NOT NULL PRIMARY KEY,
     return_date_key   INTEGER       NOT NULL REFERENCES dim_date(date_key),

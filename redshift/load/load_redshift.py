@@ -1,8 +1,12 @@
 """Load curated star-schema datasets into Amazon Redshift (PRD §10.3, FR-06).
 
-Reads the CSV exports written by the PySpark pipeline (data/curated/csv/),
-creates the warehouse schema via redshift/ddl/*.sql, and bulk-loads with
-batched INSERTs. Credentials come ONLY from the .env file (see .env.example).
+Two loading modes (controlled by .env):
+  - S3 COPY (recommended): uploads curated CSV to S3, then runs Redshift COPY
+    — leverages MPP parallelism, handles millions of rows efficiently
+  - Direct INSERT (fallback): batched multi-row INSERTs via psycopg2
+    — works without S3/IAM, suitable for small datasets or development
+
+Credentials come ONLY from the .env file (see .env.example).
 
 Usage:
     python redshift/load/load_redshift.py            # full load
@@ -49,16 +53,49 @@ def clean_value(v: str):
     return v
 
 
-def load_table(cur, table: str, page_size: int = 1000) -> int:
-    import psycopg2.extras
+# --------------------------------------------------- S3 COPY (production) --
+def upload_to_s3(table: str) -> str:
+    """Upload curated CSV to S3 and return the S3 URI."""
+    import boto3
+    path = find_csv(table)
+    s3_key = f"{settings.S3_PREFIX}/{table}/{path.name}"
+    s3 = boto3.client("s3")
+    print(f"  uploading {path.name} -> s3://{settings.S3_BUCKET}/{s3_key}")
+    s3.upload_file(str(path), settings.S3_BUCKET, s3_key)
+    return f"s3://{settings.S3_BUCKET}/{settings.S3_PREFIX}/{table}/"
+
+
+def load_table_s3_copy(cur, table: str) -> int:
+    """Upload CSV to S3, then COPY into Redshift (MPP-optimized)."""
+    s3_uri = upload_to_s3(table)
+    copy_sql = f"""
+        COPY retailiq.{table}
+        FROM '{s3_uri}'
+        IAM_ROLE '{settings.REDSHIFT_IAM_ROLE}'
+        CSV
+        IGNOREHEADER 1
+        DATEFORMAT 'auto'
+        TIMEFORMAT 'auto'
+        BLANKSASNULL
+        EMPTYASNULL
+        REGION 'ap-south-1';
+    """
+    cur.execute(copy_sql)
+    cur.execute(f"SELECT COUNT(*) FROM retailiq.{table}")
+    return cur.fetchone()[0]
+
+
+# ------------------------------------------- Direct INSERT (fallback) ------
+def load_table_insert(cur, table: str, page_size: int = 1000) -> int:
+    """Fallback: batched multi-row INSERT via psycopg2 execute_values."""
+    from psycopg2.extras import execute_values
     path = find_csv(table)
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         cols = reader.fieldnames
         rows = [[clean_value(v) for v in row.values()] for row in reader]
-    placeholders = ", ".join(["%s"] * len(cols))
-    sql = f'INSERT INTO retailiq.{table} ({", ".join(cols)}) VALUES ({placeholders})'
-    psycopg2.extras.execute_batch(cur, sql, rows, page_size=page_size)
+    sql = f'INSERT INTO retailiq.{table} ({", ".join(cols)}) VALUES %s'
+    execute_values(cur, sql, rows, page_size=page_size)
     return len(rows)
 
 
@@ -82,10 +119,18 @@ def main() -> None:
         sys.exit("Redshift is not configured. Copy .env.example to .env and "
                  "fill in REDSHIFT_HOST / REDSHIFT_USER / REDSHIFT_PASSWORD.")
 
+    use_s3 = settings.s3_configured()
+    if use_s3:
+        print(f"Loading mode: S3 COPY (bucket={settings.S3_BUCKET})")
+    else:
+        print("Loading mode: Direct INSERT (S3 not configured, using fallback)")
+        print("  TIP: Set S3_BUCKET and REDSHIFT_IAM_ROLE in .env for production loads")
+
     import psycopg2
+    # sslmode=require: Redshift Serverless enforces SSL by default.
     conn = psycopg2.connect(host=settings.REDSHIFT_HOST, port=settings.REDSHIFT_PORT,
                             dbname=settings.REDSHIFT_DATABASE, user=settings.REDSHIFT_USER,
-                            password=settings.REDSHIFT_PASSWORD)
+                            password=settings.REDSHIFT_PASSWORD, sslmode="require")
     conn.autocommit = True
     cur = conn.cursor()
     try:
@@ -96,7 +141,10 @@ def main() -> None:
             cur.execute(sql)
 
         for t in args.tables:
-            n = load_table(cur, t)
+            if use_s3:
+                n = load_table_s3_copy(cur, t)
+            else:
+                n = load_table_insert(cur, t)
             print(f"Loaded {t:18s} {n:>8,} rows")
 
         print("Row counts in warehouse:")

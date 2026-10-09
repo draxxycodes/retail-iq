@@ -3,6 +3,7 @@
 Run: pytest tests/ -q
 These run on tiny in-memory Spark DataFrames - no source data needed.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -31,8 +32,18 @@ SALES_SCHEMA = StructType([
 
 @pytest.fixture(scope="module")
 def spark():
+    # Fix: ensure PySpark workers use the same Python that launched pytest,
+    # preventing version mismatch crashes on Windows (Python 3.14 vs 3.12).
+    python_exe = sys.executable
+    os.environ["PYSPARK_PYTHON"] = python_exe
+    os.environ["PYSPARK_DRIVER_PYTHON"] = python_exe
+
     ss = (SparkSession.builder.appName("RetailIQ-DQ-Tests")
-          .master("local[1]").config("spark.sql.shuffle.partitions", "2")
+          .master("local[1]")
+          .config("spark.sql.shuffle.partitions", "2")
+          .config("spark.python.worker.reuse", "true")
+          .config("spark.driver.host", "127.0.0.1")
+          .config("spark.driver.bindAddress", "127.0.0.1")
           .getOrCreate())
     ss.sparkContext.setLogLevel("ERROR")
     yield ss

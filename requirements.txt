@@ -3,6 +3,9 @@
 
 pyspark==3.5.3            # ETL engine (ingestion, transformation)
 pandas==2.2.3             # source-data generation, DQ summaries
+numpy>=1.26               # numeric operations for data generation
 psycopg2-binary==2.9.10   # Redshift warehouse loading (PostgreSQL wire protocol)
 python-dotenv==1.0.1      # load configuration from .env (never hardcode credentials)
 pytest==8.3.4             # unit tests for data-quality functions
+boto3>=1.34               # AWS S3 SDK (staging curated data for Redshift COPY)
+mysql-connector-python>=8.0  # MySQL connectivity fallback

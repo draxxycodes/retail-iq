@@ -46,3 +46,42 @@ def redshift_configured() -> bool:
             REDSHIFT_PASSWORD and "your-password" not in REDSHIFT_PASSWORD,
         ]
     )
+
+
+# --------------------------------------------------------- MySQL ----------
+MYSQL_HOST = _env("MYSQL_HOST", "localhost")
+MYSQL_PORT = int(_env("MYSQL_PORT", "3306"))
+MYSQL_DATABASE = _env("MYSQL_DATABASE", "retail_db")
+MYSQL_USER = _env("MYSQL_USER", "")
+MYSQL_PASSWORD = _env("MYSQL_PASSWORD", "")
+MYSQL_JDBC_URL = f"jdbc:mysql://{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}"
+
+
+def mysql_configured() -> bool:
+    """True when MySQL JDBC settings have real values."""
+    return bool(MYSQL_USER and MYSQL_PASSWORD)
+
+
+# --------------------------------------------------------- Oracle ---------
+ORACLE_HOST = _env("ORACLE_HOST", "localhost")
+ORACLE_PORT = int(_env("ORACLE_PORT", "1521"))
+ORACLE_SERVICE = _env("ORACLE_SERVICE", "XEPDB1")
+ORACLE_USER = _env("ORACLE_USER", "")
+ORACLE_PASSWORD = _env("ORACLE_PASSWORD", "")
+ORACLE_JDBC_URL = f"jdbc:oracle:thin:@{ORACLE_HOST}:{ORACLE_PORT}/{ORACLE_SERVICE}"
+
+
+def oracle_configured() -> bool:
+    """True when Oracle JDBC settings have real values."""
+    return bool(ORACLE_USER and ORACLE_PASSWORD)
+
+
+# ------------------------------------------------------------- S3 --------
+S3_BUCKET = _env("S3_BUCKET", "")
+S3_PREFIX = _env("S3_PREFIX", "retailiq/curated")
+REDSHIFT_IAM_ROLE = _env("REDSHIFT_IAM_ROLE", "")
+
+
+def s3_configured() -> bool:
+    """True when S3 staging bucket and Redshift IAM role are set."""
+    return bool(S3_BUCKET and REDSHIFT_IAM_ROLE and "arn:aws" in REDSHIFT_IAM_ROLE)
