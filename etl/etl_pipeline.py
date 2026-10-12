@@ -137,6 +137,8 @@ def extract(spark: SparkSession) -> dict[str, DataFrame]:
             db_type, table_name = JDBC_TABLES[name]
             try:
                 df = _read_jdbc(spark, db_type, table_name, schema)
+                # Eager action: forces driver class loading and connection test immediately
+                _ = df.take(1)
                 mode = f"JDBC/{db_type}"
             except Exception as e:
                 print(f"  WARN  JDBC read failed for {name}: {e}")
