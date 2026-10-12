@@ -50,7 +50,7 @@ def check_referential(df: DataFrame, master: DataFrame, fk: str, master_key: str
 
 
 def check_numerics_sales(df: DataFrame) -> DataFrame:
-    """quantity > 0, unit_price >= 0, discount >= 0 (and discount <= gross)."""
+    """quantity > 0, unit_price >= 0, discount >= 0 (and discount <= gross)"""
     bad_qty = df.filter((F.col("quantity").isNull()) | (F.col("quantity") <= 0))
     bad_price = df.filter((F.col("unit_price").isNull()) | (F.col("unit_price") < 0))
     bad_disc = df.filter(
