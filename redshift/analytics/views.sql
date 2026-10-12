@@ -117,19 +117,18 @@ product_returns AS (
 SELECT
     p.product_id, p.product_name, p.category, p.subcategory, p.brand,
     p.supplier_name,
-    COALESCE(ps.orders, 0)      AS orders,
-    COALESCE(ps.units_sold, 0)  AS units_sold,
-    COALESCE(ps.revenue, 0)     AS revenue,
-    COALESCE(ps.profit, 0)      AS profit,
-    CASE WHEN COALESCE(ps.revenue, 0) = 0 THEN 0
-         ELSE COALESCE(ps.profit, 0) / ps.revenue END AS profit_margin,
+    ps.orders,
+    ps.units_sold,
+    ps.revenue,
+    ps.profit,
+    CASE WHEN ps.revenue = 0 THEN 0
+         ELSE ps.profit / ps.revenue END AS profit_margin,
     COALESCE(pr.units_returned, 0) AS units_returned,
-    CASE WHEN COALESCE(ps.units_sold, 0) = 0 THEN 0
+    CASE WHEN ps.units_sold = 0 THEN 0
          ELSE COALESCE(pr.units_returned, 0)::DECIMAL / ps.units_sold END AS return_rate
 FROM dim_product p
-LEFT JOIN product_sales ps   ON ps.product_id = p.product_id
-LEFT JOIN product_returns pr ON pr.product_id = p.product_id
-WHERE ps.orders IS NOT NULL;
+JOIN product_sales ps        ON ps.product_id = p.product_id
+LEFT JOIN product_returns pr ON pr.product_id = p.product_id;
 
 -- ------------------------------------------------ store performance ----
 CREATE OR REPLACE VIEW v_store_performance AS
@@ -154,19 +153,18 @@ store_returns AS (
 )
 SELECT
     s.store_id, s.store_name, s.store_type, s.city, s.state, s.region,
-    COALESCE(ss.orders, 0)      AS orders,
-    COALESCE(ss.units_sold, 0)  AS units_sold,
-    COALESCE(ss.revenue, 0)     AS revenue,
-    COALESCE(ss.profit, 0)      AS profit,
-    COALESCE(ss.revenue, 0) / NULLIF(COALESCE(ss.orders, 0), 0) AS avg_order_value,
-    COALESCE(ss.customers_served, 0) AS customers_served,
+    ss.orders,
+    ss.units_sold,
+    ss.revenue,
+    ss.profit,
+    ss.revenue / NULLIF(ss.orders, 0) AS avg_order_value,
+    ss.customers_served,
     COALESCE(sr.refund_amount, 0) AS refund_amount,
-    CASE WHEN COALESCE(ss.revenue, 0) = 0 THEN 0
+    CASE WHEN ss.revenue = 0 THEN 0
          ELSE COALESCE(sr.refund_amount, 0) / ss.revenue END AS refund_rate
 FROM dim_store s
-LEFT JOIN store_sales ss   ON ss.store_id = s.store_id
-LEFT JOIN store_returns sr ON sr.store_id = s.store_id
-WHERE ss.orders IS NOT NULL;
+JOIN store_sales ss        ON ss.store_id = s.store_id
+LEFT JOIN store_returns sr ON sr.store_id = s.store_id;
 
 -- -------------------------------------------- promotion performance ----
 CREATE OR REPLACE VIEW v_promotion_performance AS
