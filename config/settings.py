@@ -32,7 +32,7 @@ for _d in (RAW_DATA_DIR, CURATED_DATA_DIR, REJECTED_DATA_DIR, DQ_LOG_DIR):
 # ------------------------------------------------------- Redshift --------
 REDSHIFT_HOST = _env("REDSHIFT_HOST", "")
 REDSHIFT_PORT = int(_env("REDSHIFT_PORT", "5439"))
-REDSHIFT_DATABASE = _env("REDSHIFT_DATABASE", "retailiq")
+REDSHIFT_DATABASE = _env("REDSHIFT_DATABASE", "dev")  # Redshift Serverless default; schema=retailiq
 REDSHIFT_USER = _env("REDSHIFT_USER", "")
 REDSHIFT_PASSWORD = _env("REDSHIFT_PASSWORD", "")
 

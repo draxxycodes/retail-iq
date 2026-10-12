@@ -476,16 +476,17 @@ Copy `.env.example` to `.env` and supply your infrastructure secrets:
 
 ```ini
 # Amazon Redshift Serverless
-REDSHIFT_HOST=retailiq-cluster.xxxxxxx.ap-south-1.redshift.amazonaws.com
+REDSHIFT_HOST=default-workgroup.xxxxxxxxxxxx.ap-south-1.redshift-serverless.amazonaws.com
 REDSHIFT_PORT=5439
-REDSHIFT_DATABASE=retailiq
-REDSHIFT_USER=admin_user
+REDSHIFT_DATABASE=dev          # Serverless default DB; the 'retailiq' schema is created inside it
+REDSHIFT_USER=admin
 REDSHIFT_PASSWORD=YourSecurePassword123!
 
 # AWS S3 Staging Lake
-S3_BUCKET=retailiq-data-lake-prod
-S3_PREFIX=curated
-REDSHIFT_IAM_ROLE=arn:aws:iam::123456789012:role/RedshiftS3ReadRole
+S3_BUCKET=retailiq-staging-xxxxxxxxxxxx
+S3_PREFIX=retailiq/curated
+REDSHIFT_IAM_ROLE=arn:aws:iam::xxxxxxxxxxxx:role/RetailIQRedshiftS3Role
+AWS_REGION=ap-south-1
 
 # Operational Databases (Optional: if omitted, CSV failover activates)
 MYSQL_HOST=mysql-db.internal.net
@@ -498,13 +499,46 @@ ORACLE_PASSWORD=SecurePassword!
 
 ### 2. Deploy Warehouse DDL & Parallel S3 COPY
 ```bash
-python redshift/load/load_redshift.py
+# Full load: uploads CSVs to S3, then COPYs into Redshift, then compiles views
+python redshift/load/load_redshift.py --apply-views
+
+# If CSVs are already staged in S3 (e.g., from Airflow upload_to_s3 task):
+python redshift/load/load_redshift.py --skip-upload --apply-views
 ```
+
+Expected production output:
+```text
+Loading mode: S3 COPY (bucket=retailiq-staging-601699043157)
+Applying 01_dimensions.sql ...
+Applying 02_facts.sql ...
+Loaded dim_customer          8,000 rows
+Loaded dim_product             240 rows
+Loaded dim_store                20 rows
+Loaded dim_supplier             12 rows
+Loaded dim_promotion            10 rows
+Loaded dim_date                754 rows
+Loaded fact_sales           58,454 rows
+Loaded fact_returns          3,486 rows
+Row counts in warehouse:
+  dim_customer          8,000
+  dim_product             240
+  dim_store                20
+  dim_supplier             12
+  dim_promotion            10
+  dim_date                754
+  fact_sales           58,454
+  fact_returns          3,486
+Applying analytical views (views.sql) ...
+Analytical views compiled successfully.
+LOAD COMPLETE
+```
+
 This script automatically:
 1. Connects via `psycopg2` using SSL (`sslmode=require`).
-2. Applies `redshift/ddl/01_dimensions.sql` and `redshift/ddl/02_facts.sql`.
-3. Uploads curated CSVs to `s3://retailiq-data-lake-prod/curated/`.
-4. Executes native parallel Redshift `COPY` commands from S3.
+2. Applies `redshift/ddl/01_dimensions.sql` and `redshift/ddl/02_facts.sql` (idempotent `DROP … CASCADE`).
+3. Uploads curated CSVs to S3 (or skips if `--skip-upload`).
+4. Executes native parallel Redshift `COPY … IAM_ROLE … CSV` commands.
+5. Compiles 7 analytical views via `--apply-views`.
 
 ### 3. Deploy Apache Airflow DAG
 1. Copy `airflow/dags/retailiq_etl_dag.py` to your Airflow `$AIRFLOW_HOME/dags/` folder.
