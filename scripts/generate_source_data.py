@@ -89,7 +89,7 @@ def _seasonality(d: date) -> float:
         mult = 1.35
     elif m in (6, 7):
         mult = 0.85          # monsoon dip
-    if d.weekday() >= 5:     # weekend uplift
+    if d.weekday() >= 5:     
         mult *= 1.25
     return mult
 
