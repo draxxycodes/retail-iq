@@ -65,9 +65,16 @@ def upload_to_s3(table: str) -> str:
     return f"s3://{settings.S3_BUCKET}/{settings.S3_PREFIX}/{table}/"
 
 
-def load_table_s3_copy(cur, table: str) -> int:
+def load_table_s3_copy(cur, table: str, skip_upload: bool = False) -> int:
     """Upload CSV to S3, then COPY into Redshift (MPP-optimized)."""
-    s3_uri = upload_to_s3(table)
+    if skip_upload:
+        s3_uri = f"s3://{settings.S3_BUCKET}/{settings.S3_PREFIX}/{table}/"
+    else:
+        s3_uri = upload_to_s3(table)
+    
+    with open(find_csv(table), newline="", encoding="utf-8") as f:
+        n_rows = sum(1 for _ in f) - 1
+
     copy_sql = f"""
         COPY retailiq.{table}
         FROM '{s3_uri}'
@@ -78,11 +85,10 @@ def load_table_s3_copy(cur, table: str) -> int:
         TIMEFORMAT 'auto'
         BLANKSASNULL
         EMPTYASNULL
-        REGION 'ap-south-1';
+        REGION '{settings.AWS_REGION}';
     """
     cur.execute(copy_sql)
-    cur.execute(f"SELECT COUNT(*) FROM retailiq.{table}")
-    return cur.fetchone()[0]
+    return n_rows
 
 
 # ------------------------------------------- Direct INSERT (fallback) ------
@@ -103,6 +109,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true",
                     help="validate files and config without touching Redshift")
+    ap.add_argument("--skip-upload", action="store_true",
+                    help="skip S3 upload if files are already staged in S3")
+    ap.add_argument("--apply-views", action="store_true",
+                    help="compile redshift/analytics/views.sql after loading")
     ap.add_argument("--tables", nargs="*", default=TABLES, choices=TABLES)
     args = ap.parse_args()
 
@@ -122,6 +132,8 @@ def main() -> None:
     use_s3 = settings.s3_configured()
     if use_s3:
         print(f"Loading mode: S3 COPY (bucket={settings.S3_BUCKET})")
+        if args.skip_upload:
+            print("  [INFO] --skip-upload set: reusing already-staged S3 files")
     else:
         print("Loading mode: Direct INSERT (S3 not configured, using fallback)")
         print("  TIP: Set S3_BUCKET and REDSHIFT_IAM_ROLE in .env for production loads")
@@ -142,7 +154,7 @@ def main() -> None:
 
         for t in args.tables:
             if use_s3:
-                n = load_table_s3_copy(cur, t)
+                n = load_table_s3_copy(cur, t, skip_upload=args.skip_upload)
             else:
                 n = load_table_insert(cur, t)
             print(f"Loaded {t:18s} {n:>8,} rows")
@@ -151,6 +163,14 @@ def main() -> None:
         for t in args.tables:
             cur.execute(f"SELECT COUNT(*) FROM retailiq.{t}")
             print(f"  {t:18s} {cur.fetchone()[0]:>8,}")
+
+        if args.apply_views:
+            views_sql_path = PROJECT_ROOT / "redshift" / "analytics" / "views.sql"
+            if views_sql_path.exists():
+                print("Applying analytical views (views.sql) ...")
+                cur.execute(views_sql_path.read_text(encoding="utf-8"))
+                print("Analytical views compiled successfully.")
+
         print("LOAD COMPLETE")
     finally:
         cur.close()

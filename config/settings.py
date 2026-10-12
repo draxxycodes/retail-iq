@@ -80,6 +80,7 @@ def oracle_configured() -> bool:
 S3_BUCKET = _env("S3_BUCKET", "")
 S3_PREFIX = _env("S3_PREFIX", "retailiq/curated")
 REDSHIFT_IAM_ROLE = _env("REDSHIFT_IAM_ROLE", "")
+AWS_REGION = _env("AWS_REGION", _env("AWS_DEFAULT_REGION", "ap-south-1"))
 
 
 def s3_configured() -> bool:
