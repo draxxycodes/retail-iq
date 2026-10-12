@@ -78,7 +78,7 @@ with DAG(
     dag_id="retailiq_daily_etl",
     default_args=default_args,
     description="RetailIQ end-to-end ETL: sources -> PySpark -> S3 -> Redshift -> Power BI",
-    schedule_interval="0 20 * * *",  # 02:00 IST = 20:30 UTC (prev day)
+    schedule_interval="30 20 * * *",  # 02:00 IST = 20:30 UTC (prev day)
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
@@ -136,7 +136,7 @@ with DAG(
     # ---- 5. Load into Redshift ----
     load_redshift = BashOperator(
         task_id="load_redshift",
-        bash_command=f"cd {PROJECT_ROOT} && python redshift/load/load_redshift.py",
+        bash_command=f"cd {PROJECT_ROOT} && python redshift/load/load_redshift.py --skip-upload",
         doc="Apply DDL and bulk-load curated data into Redshift star schema.",
     )
 
