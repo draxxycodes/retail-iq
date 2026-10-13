@@ -593,12 +593,12 @@ All reporting layers consume 7 pre-aggregated Gold SQL views in [redshift/analyt
 **Use Case 5 — Retail Sales Analytics & Customer Insights Platform**  
 **Hackathon:** Cognizant NPN Hackathon / Industry Track
 
+- **Punyasila Mohanty** — Project Lead & Strategy
 - **Chinmaya Kumar Rout (Chinu)** — Data Architect & Pipeline Lead  
-  *Responsible for overall pipeline design, stage decoupling, and hybrid architecture execution.*
-- **Punyasila** — Project Lead & Strategy
-- **Sairush** — Data Ingestion Engineer
-- **Priyabrata Lenka** — ETL & Data Quality Engineer
-- **Om Priyadarshi** — Cloud Data Warehouse & DevOps Engineer
+- **Sairush Sahoo** — Data Ingestion Engineer
+- **Sreyash Lenka** — ETL & Data Quality Engineer
+- **Priyabrata Dash** — Cloud Data Warehouse & DevOps Engineer
+- **Om** — Orchestration Engineer
 - **Aurokalyan** — BI Analyst & Visualization Lead
 
 **Mentor:** Satyabrata Tripathy  
